@@ -1,88 +1,50 @@
 <script>
-	import { onMount } from 'svelte';
-	import Projects from '../Projects';
-	import Settings from '../Settings';
-	import Loader from '../Loader';
-	import ErrorMessage from '../ErrorMessage';
-	import PumpkinLoader from '../PumpkinLoader';
-	import GhostAvatar from '../GhostAvatar';
-	import {
-		profile,
-		organizations,
-		isFetchingProfile,
-		isSidebarHidden,
-		theme,
-		language,
-		event,
-	} from '../../shared/store';
-	import { getProfile } from '../../shared/requester';
-	import { addItem } from '../../shared/storage';
+import Projects from '../Projects';
+import Settings from '../Settings';
+import {
+	profile,
+	isSidebarHidden,
+	theme,
+	language,
+	firstOrganization,
+event,
+} from '../../shared/store';
+import { getAvatar } from '../../shared/requester';
+import GhostAvatar from '../GhostAvatar/GhostAvatar.svelte';
 
-	let currentTabIndex = 1;
-	let projects = [];
+let currentTabIndex = 1;
 
-	const onTabChange = index => {
-		currentTabIndex = index;
-	};
+const onTabChange = index => {
+	currentTabIndex = index;
+};
 
-	onMount(() => {
-		if (!$profile) {
-			getProfile();
-		}
-	});
+const toggleSidebar = () => {
+	isSidebarHidden.update(isHidden => !isHidden);
+};
 
-	organizations.subscribe(organizationsList => {
-		projects = organizationsList.reduce((acc, cur) => {
-			if (cur.checked) {
-				acc.push(cur);
-			}
-			return acc;
-		}, []);
-	});
-
-	const getSelectedOrganizationProjects = (acc, curr) => {
-		if (curr.checked) {
-			acc.push(...curr.projects);
-		}
-		return acc;
-	};
-
-	$: projects = $organizations
-		.reduce(getSelectedOrganizationProjects, [])
-		.sort((a, b) => (a.name > b.name ? 1 : -1));
-
-	const toggleSidebar = () => {
-		isSidebarHidden.update(isHidden => !isHidden);
-	};
-
-	const setFocus = (e, index) => {
-		currentTabIndex = index;
-		document.getElementById(e.detail).focus();
-	};
+const setFocus = (e, index) => {
+	currentTabIndex = index;
+	document.getElementById(e.detail).focus();
+};
 </script>
 
-<style src="./Profile.scss">
-</style>
-
-<div class="skz-profile">
-	{#if !$profile || $isFetchingProfile}
-		{#if $event.isHalloween}
+<!-- {#if $event.isHalloween}
 			<PumpkinLoader />
 		{:else}
 			<Loader />
-		{/if}
-	{:else if $profile.hasError}
-		<ErrorMessage
-			retry={getProfile}
-			label={language.getWord('ProfileNotFound')} />
-	{:else}
-		<div class="skz-avatar__gradient skz-avatar__gradient--{$theme}" />
+		{/if} -->
+
+<div class="skz-profile">
+	{#if $profile}
+		<div class="skz-avatar__gradient skz-avatar__gradient--{$theme}"></div>
 		<div class="skz-avatar">
-			{#await $profile.avatar}
+			-
+			{#await getAvatar($profile.id, $firstOrganization)}
 				<img
 					class="skz-avatar__image"
-					alt={$profile.displayName}
-					src="./assets/user.svg" />
+					alt="{$profile.displayName}"
+					src="./assets/user.svg"
+				/>
 			{:then avatar}
 				{#if $event.isHalloween}
 					<div class="skz-avatar__image skz-avatar__image--halloween">
@@ -102,30 +64,33 @@
 			{:catch error}
 				<img
 					class="skz-avatar__image"
-					alt={$profile.displayName}
-					src="./assets/user.svg" />
+					alt="{$profile.displayName}"
+					src="./assets/user.svg"
+				/>
 			{/await}
-			<button class="skz-profile-toggle" on:click={toggleSidebar}>
+			<button class="skz-profile-toggle" on:click="{toggleSidebar}">
 				{language.getWord('Menu')}
 			</button>
 		</div>
 		<p class="skz-profile-name">{$profile.displayName}</p>
 		<nav class="skz-profile-nav skz-profile-nav--{currentTabIndex}">
 			<button
-				on:click={() => onTabChange(1)}
-				class="skz-profile-nav__item skz-profile-nav__item--projects">
+				on:click="{() => onTabChange(1)}"
+				class="skz-profile-nav__item skz-profile-nav__item--projects"
+			>
 				{language.getWord('Projects')}
 			</button>
 			<button
-				on:click={() => onTabChange(2)}
-				class="skz-profile-nav__item skz-profile-nav__item--settings">
+				on:click="{() => onTabChange(2)}"
+				class="skz-profile-nav__item skz-profile-nav__item--settings"
+			>
 				{language.getWord('Settings')}
 			</button>
-			<span class="skz-profile-nav__indicator" />
+			<span class="skz-profile-nav__indicator"></span>
 		</nav>
 		<div class="skz-profile-content skz-profile-content--{currentTabIndex}">
 			<div class="skz-profile-content__item">
-				<Projects {projects} on:focus={e => setFocus(e, 1)} />
+				<Projects on:focus="{e => setFocus(e, 1)}" />
 			</div>
 			<div class="skz-profile-content__item">
 				<Settings />

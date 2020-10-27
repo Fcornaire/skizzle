@@ -12,10 +12,20 @@ import {
 	clientToken,
 	organizations,
 	isFetchingPullRequests,
-	isFetchingProfile,
 	pullRequestsFetchHasError,
+	firstOrganization,
+	projects,
+	repositories,
 } from './store';
 import { getDiffDays } from './helpers';
+import { Descriptor, toProfileModel } from './Domain/Models/Profile';
+import {
+	Organization,
+	toOrganizationModel,
+} from './Domain/Models/Organization';
+import { toProjectModel, Project } from './Domain/Models/Project';
+import { toRepositoryModel, Repository } from './Domain/Models/Repository';
+import { get } from 'svelte/store';
 
 let data: any[] = [];
 let loadedRepositories = 0;
@@ -136,6 +146,34 @@ export const customFetch = async (url: string) => {
 	return await fetch(url, params);
 };
 
+export const initialRequestOrchestrator = async () => {
+	const user = await getProfile();
+	profile.set(user);
+
+	const organizationsResp = await getOrganizations(user.id);
+	organizations.set(organizationsResp);
+
+	// organizationsResp.forEach(async organization => {
+	// 	const projectsResp = await getProjects(
+	// 		organization,
+	// 		organizationsResp.length,
+	// 	);
+
+	// 	projects.update(prjs => [...prjs, ...projectsResp]);
+
+	// 	projectsResp.forEach(async project => {
+	// 		const repo = await getRepositories({
+	// 			projectId: project.id,
+	// 			organizationName: organization.accountName,
+	// 			numberOfProjects: projectsResp.length,
+	// 		});
+	// 		repositories.update(rep => {
+	// 			return [...rep, ...repo];
+	// 		});
+	// 	});
+	// });
+};
+
 export const getMemberName = async memberId => {
 	const res = await customFetch(
 		`https://app.vssps.visualstudio.com/_apis/profile/profiles/${memberId}?api-version=5.1`,
@@ -150,183 +188,102 @@ export const getMemberName = async memberId => {
 };
 
 export const getProfile = async () => {
-	isFetchingProfile.set(true);
+	try {
+		const res = await customFetch(
+			'https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=5.1-preview.3',
+		);
 
-	const res = await customFetch(
-		'https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=5.1-preview.3',
-	);
+		if (res.ok) {
+			const user = await res.json();
 
-	if (res.ok) {
-		res
-			.json()
-			.then(user => {
-				profile.set(user);
-				clientToken.set(getItem('clientToken'));
-				getOrganizations(user.id);
-			})
-			.catch(() => {
-				clientToken.set(undefined);
-				removeItem('clientToken');
-				isFetchingProfile.set(false);
-				profile.set({
-					...profile,
-					hasError: true,
-				});
-			});
-	} else {
-		profile.set({
-			...profile,
-			hasError: true,
-		});
-		isFetchingProfile.set(false);
-		throw new Error(res.statusText);
+			clientToken.set(getItem('clientToken'));
+			return toProfileModel(user);
+		} else {
+			clientToken.set(undefined);
+			removeItem('clientToken');
+			return toProfileModel({});
+		}
+	} catch (e) {
+		throw e;
 	}
 };
 
 export const getOrganizations = async (id: string) => {
-	const res = await customFetch(
-		`https://app.vssps.visualstudio.com/_apis/accounts?memberId=${id}&api-version=5.1-preview.1`,
-	);
+	try {
+		const res = await customFetch(
+			`https://app.vssps.visualstudio.com/_apis/accounts?memberId=${id}&api-version=5.1-preview.1`,
+		);
 
-	if (res.ok) {
 		const result = await res.json();
 
 		if (result && result.count > 0) {
-			const firstOrganization = result.value[0].accountName;
+			const fstOrganization = result.value[0].accountName;
 
-			profile.update(user => ({
-				...user,
-				avatar: getDescriptor(id).then(descriptor =>
-					getAvatar(id, firstOrganization, descriptor.value),
-				),
-			}));
+			firstOrganization.set(fstOrganization);
 		}
 
-		data.push(
-			...result.value.map((organization: any) => ({
-				...organization,
-				checked: existValue(getItem('organizations'), organization.accountId),
-			})),
+		const orgs = result.value.map((organization: any) =>
+			toOrganizationModel(
+				organization,
+				existValue(getItem('organizations'), organization.accountId),
+			),
 		);
 
-		data.forEach(organization =>
-			getProjects({ organization, numberOfOrganizations: result.value.length }),
-		);
-	} else {
-		profile.update(user => ({
-			...user,
-			hasError: true,
-		}));
-		isFetchingProfile.set(false);
-		throw new Error(res.statusText);
+		return orgs as Organization[];
+	} catch (e) {
+		throw new Error(e);
 	}
 };
 
-export const getProjects = async ({
-	organization,
-	numberOfOrganizations,
-}: {
-	organization: any;
-	numberOfOrganizations: number;
-}) => {
+export const getProjects = async (
+	organization: Organization,
+	numberOfOrganizations: number,
+) => {
 	const res = await customFetch(
 		`https://dev.azure.com/${organization.accountName}/_apis/projects?$top=1000&api-version=5.1`,
 	);
 
-	let result = {
-		value: [],
-	};
+	const result = await res.json();
 
-	if (res.ok) {
-		result = await res.json();
-	} else {
-		brokenOrganizations.push(organization.accountName);
-	}
+	// loadedOrganizations += 1;
 
-	loadedOrganizations += 1;
+	// data = data.map(organizationItem => ({
+	// 	...organizationItem,
+	// 	projects:
+	// 		organizationItem.accountId === organization.accountId
+	// 			? result.value
+	// 			: organizationItem.projects,
+	// }));
 
-	data = data.map(organizationItem => ({
-		...organizationItem,
-		isBroken: brokenOrganizations.includes(organizationItem.accountName),
-		projects:
-			organizationItem.accountId === organization.accountId
-				? result.value
-				: organizationItem.projects,
-	}));
+	const projects = result.value.map(project =>
+		toProjectModel(project, organization.accountId),
+	) as Project[];
 
-	if (loadedOrganizations === numberOfOrganizations) {
-		const numberOfProjects = data.reduce((acc, curr) => {
-			acc += curr.projects ? curr.projects.length : 0;
-			return acc;
-		}, 0);
-
-		data.forEach(organizationItem => {
-			if (organizationItem.projects) {
-				organizationItem.projects.forEach(({ id: projectId }: { id: string }) =>
-					getRepositories({
-						projectId,
-						organizationName: organizationItem.accountName,
-						numberOfProjects,
-					}),
-				);
-			}
-		});
-	}
+	return projects;
 };
 
-export const getRepositories = async ({
-	projectId,
-	organizationName,
-	numberOfProjects,
-}: {
-	projectId: string;
-	organizationName: string;
-	numberOfProjects: number;
-}) => {
+export const getRepositories = async (
+	projectId: string,
+	organizationName: string,
+) => {
 	const res = await customFetch(
 		`https://dev.azure.com/${organizationName}/${projectId}/_apis/git/repositories?includeLinks=true&api-version=5.0`,
 	);
 
-	if (res.ok) {
+	try {
 		const result = await res.json();
 
-		data = data.map(organizationItem => {
-			const newOrganizationItem = { ...organizationItem };
+		const repositories = result.value.map(repo =>
+			toRepositoryModel(
+				repo,
+				getItem('repositories').includes(repo.id),
+				projectId,
+			),
+		);
 
-			if (organizationItem.accountName === organizationName) {
-				newOrganizationItem.projects = newOrganizationItem.projects.map(
-					(project: any) => {
-						const newProject = { ...project };
-
-						if (project.id === projectId) {
-							newProject.repositories = result.value
-								.map((repository: any) => {
-									const checked = getItem('repositories') || [];
-
-									return {
-										...repository,
-										checked: checked.includes(repository.id),
-									};
-								})
-								.sort((a: any, b: any) => (a.name > b.name ? 1 : -1));
-						}
-
-						return newProject;
-					},
-				);
-			}
-
-			return newOrganizationItem;
-		});
-
-		loadedRepositories += 1;
-
-		if (loadedRepositories === numberOfProjects) {
-			isFetchingProfile.set(false);
-			organizations.set(data);
-		}
-	} else {
-		throw new Error(res.statusText);
+		return repositories as Repository[];
+	} catch (e) {
+		throw new Error(e);
 	}
 };
 
@@ -404,76 +361,50 @@ export const updatePullRequestsStore = ({
 };
 
 export const checkedElements = ({ checked }: { checked: boolean }) => !!checked;
-export const getCheckedRepositories = (
-	allProjects: any,
-	{
-		projects,
-		accountName: organizationName,
-	}: { projects: any; accountName: string },
-) => {
-	allProjects.push(
-		...projects.reduce(
-			(allRepositories: any, { repositories }: { repositories: any }) => {
-				allRepositories.push(
-					...repositories
-						.filter(checkedElements)
-						.map(
-							({
-								id,
-								creationDate,
-								project: { id: projectId },
-							}: {
-								id: string;
-								creationDate: string;
-								project: { id: string };
-							}) => ({
-								id,
-								projectId,
-								organizationName,
-								creationDate,
-							}),
-						),
-				);
-				return allRepositories;
-			},
-			[],
-		),
-	);
-	return allProjects;
+export const getCheckedRepositories = () => {
+	const repos = get(repositories) as Repository[];
+
+	return repos.filter(repo => repo.checked);
 };
 
 export const getPullRequests = async ({
-	organizations,
 	shouldNotify = false,
 	isFiltered,
 	profileId,
 }: {
-	organizations: any;
 	shouldNotify: boolean;
 	isFiltered: boolean;
 	profileId: string;
 }) => {
-	pullRequestsFetchHasError.set(false);
-	numberOfLoadedPullRequests = 0;
-	if (organizations.length) {
-		const repositoriesToFetch = organizations
-			.filter(checkedElements)
-			.reduce(getCheckedRepositories, []);
-		if (repositoriesToFetch.length) {
-			isFetchingPullRequests.set(true);
-			repositoriesToFetch.forEach((repo: any) =>
+	console.log('here');
+
+	const repos = get(repositories) as Repository[];
+	const projs = get(projects) as Project[];
+	const orgs = get(organizations) as Organization[];
+
+	await Promise.all(
+		repos
+			.filter(repo => repo.checked)
+			.map(repo =>
 				fetchPullRequests({
-					...repo,
+					id: repo.id,
+					projectId: repo.projectId,
+					organizationName: orgs.filter(
+						org =>
+							org.accountId ===
+							projs.filter(prj => prj.id === repo.projectId)[0].organizationId,
+					)[0].accountName,
 					shouldNotify,
 					isFiltered,
 					profileId,
-					repositoriesToFetch,
+					repositoriesToFetch: [],
 				}),
-			);
-		} else {
-			updatePullRequestsStore({ shouldNotify, isFiltered, profileId });
-		}
-	}
+			),
+	);
+
+	//  else {
+	// 	updatePullRequestsStore({ shouldNotify, isFiltered, profileId });
+	// }
 };
 
 export const fetchPullRequests = async ({
@@ -499,6 +430,8 @@ export const fetchPullRequests = async ({
 
 	if (res.ok && res.status === 200) {
 		const result = await res.json();
+
+		console.log(result);
 
 		loadedPullRequests.push(
 			result.value.map((value: any[]) => ({ ...value, organizationName })),
@@ -537,11 +470,7 @@ export const fetchPullRequestComments = async ({
 	}
 };
 
-export const getAvatar = async (
-	userId: string,
-	organization: string,
-	subjectDescriptor: string,
-) => {
+export const getAvatar = async (userId: string, organization: string) => {
 	const imgs = getItem('images');
 	let avatar;
 
@@ -552,6 +481,9 @@ export const getAvatar = async (
 	if (avatar) {
 		return Promise.resolve({ value: avatar[userId] });
 	}
+
+	const subjectDescriptor = await getDescriptor(userId);
+
 	const res = await customFetch(
 		`https://vssps.dev.azure.com/${organization}/_apis/graph/Subjects/${subjectDescriptor}/avatars?size=large&api-version=5.1-preview.1`,
 	);
@@ -574,11 +506,9 @@ export const getDescriptor = async (userId: string) => {
 		`https://vssps.dev.azure.com/_apis/graph/descriptors/${userId}?api-version=5.0-preview.1`,
 	);
 
-	if (response.ok) {
-		return response.json();
-	} else {
-		throw new Error(response.statusText);
-	}
+	const data = await response.json();
+
+	return data as Descriptor;
 };
 
 export const clear = () => {

@@ -1,7 +1,12 @@
 {
-  "semi": true,
-  "trailingComma": "all",
-  "singleQuote": true,
-  "arrowParens": "avoid",
-  "htmlWhitespaceSensitivity": "ignore",
+	"semi": true,
+	"trailingComma": "all",
+	"singleQuote": true,
+	"arrowParens": "avoid",
+	"htmlWhitespaceSensitivity": "ignore",
+	"svelteSortOrder": "styles-scripts-markup",
+	"svelteStrictMode": true,
+	"svelteBracketNewLine": true,
+	"svelteAllowShorthand": false,
+	"svelteIndentScriptAndStyle": false
 }

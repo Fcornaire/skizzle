@@ -1,4 +1,8 @@
 import { writable, get, readable } from 'svelte/store';
+import type { Organization } from './Domain/Models/Organization';
+import type { Profile } from './Domain/Models/Profile';
+import type { Project } from './Domain/Models/Project';
+import type { Repository } from './Domain/Models/Repository';
 import { removeValueFromKey, getItem, addItem, updateItem } from './storage';
 const fs = require('fs');
 const app = require('electron');
@@ -110,10 +114,10 @@ language.subscribe(params => {
 /**
  * Profile
  */
-export const isFetchingProfile = writable<boolean>(false);
-export const profile = writable<any>(undefined);
+export const profile = writable<Profile>(undefined);
 export const isSidebarHidden = writable<boolean>(false);
 export const othersProfile = writable([]);
+export const firstOrganization = writable('');
 
 /**
  * List
@@ -124,7 +128,7 @@ export const listIsFiltered = writable<boolean>(false);
  * Organizations
  */
 export const organizationsHasError = writable<any[]>([]);
-export const organizations = writable<any[]>([]);
+export const organizations = writable<Organization[]>([]);
 export const updateOrganization = (e: any, organization: any) => {
 	organization.checked = e.target.checked;
 
@@ -145,6 +149,11 @@ export const updateOrganization = (e: any, organization: any) => {
 		}),
 	);
 };
+
+/**
+ * Project
+ */
+export const projects = writable<Project[]>([]);
 
 /**
  * Repositories
@@ -177,7 +186,7 @@ export const updateRepository = (e: any, repository: any) => {
 	);
 };
 
-export const repositories = writable<any[]>([]);
+export const repositories = writable<Repository[]>([]);
 export const isFetchingPullRequests = writable<boolean>(false);
 export const pullRequestsFetchHasError = writable<boolean>(false);
 export const pullRequests = writable<any[]>([]);
@@ -227,7 +236,6 @@ export const theme = derivedStore<number>('theme', defaultState.theme);
 export const cleanStore = () => {
 	clientToken.set(undefined);
 	isOffline.set(false);
-	isFetchingProfile.set(false);
 	profile.set(undefined);
 	organizations.set([]);
 	repositories.set([]);
